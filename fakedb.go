@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ func init() {
 }
 
 type Driver struct {
-    header []string
+	header []string
 	data   [][]string
 }
 
@@ -52,32 +53,45 @@ type CountRows struct {
 }
 
 func (d *Driver) Open(fileName string) (driver.Conn, error) {
-    if d.header == nil {
-     	file, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
+	var data [][]string
+	if d.header == nil {
+		if filepath.Ext(fileName) != ".csv" {
+			data = [][]string{
+				[]string{"id", "name"},
+				[]string{"alice", "Alice"},
+				[]string{"bob", "Bob"},
+			}
+		} else {
+			file, err := os.Open(fileName)
+			if err != nil {
+				return nil, err
+			}
+			csvReader := csv.NewReader(file)
+
+			data, err := csvReader.ReadAll()
+			if err != nil {
+				return nil, err
+			}
+			if len(data) == 0 {
+				return nil, fmt.Errorf("missing header")
+			}
+		}
+
+		d.header = data[0]
+		d.data = data[1:]
 	}
-	csvReader := csv.NewReader(file)
-	data, err := csvReader.ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, fmt.Errorf("missing header")
-	}
-    d.header = data[0]
-    d.data = data[1:]   
-    }
 
 	return &Conn{
 		header: d.header,
-		data:   d.data}, nil
+		data:   d.data,
+	}, nil
 }
 
 func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 	return &Stmt{conn: c,
 		count: strings.Contains(query, "count"),
-		input: strings.Count(query, "?")}, nil
+		input: strings.Count(query, "?"),
+	}, nil
 }
 
 func (c *Conn) Close() error {
